@@ -1,0 +1,30 @@
+[
+  {
+    "id": 1,
+    "title": "누구집 같았지만, 정말 좋았어",
+    "description": "편하게 연습하고 찍을 수 있었어요!",
+    "tags": ["분위기좋음", "조용한동네"],
+    "image": "/mock/review1.jpg"
+  },
+  {
+    "id": 2,
+    "title": "편안한 분위기였어요",
+    "description": "공간도 깔끔해서 마음에 들었습니다.",
+    "tags": ["연습용", "친절한사장님"],
+    "image": "/mock/review2.jpg"
+  },
+  {
+    "id": 3,
+    "title": "너무 조용해서 연습에 집중했어요",
+    "description": "피아노 연습에 최적!",
+    "tags": ["조용함", "장비좋음"],
+    "image": "/mock/review3.jpg"
+  },
+  {
+    "id": 4,
+    "title": "예상보다 훨씬 좋은 공간!",
+    "description": "인테리어 감성도 최고!",
+    "tags": ["인스타감성", "조명좋음"],
+    "image": "/mock/review4.jpg"
+  }
+]

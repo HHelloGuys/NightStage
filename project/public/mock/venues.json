@@ -1,0 +1,44 @@
+[
+  {
+    "id": 1,
+    "name": "대관의자체지",
+    "address": "서울 강남구 대로 123",
+    "price": 17000,
+    "image": "/mock/venue1.jpg"
+  },
+  {
+    "id": 2,
+    "name": "힙한 셀프촬영 스튜디오",
+    "address": "서울 마포구 연남동",
+    "price": 15000,
+    "image": "/mock/venue2.jpg"
+  },
+  {
+    "id": 3,
+    "name": "광명동 연습실 대관스튜디오",
+    "address": "경기도 광명시",
+    "price": 5000,
+    "image": "/mock/venue3.jpg"
+  },
+  {
+    "id": 4,
+    "name": "감성 버스킹홀",
+    "address": "서울 성동구 성수동",
+    "price": 20000,
+    "image": "/mock/venue4.jpg"
+  },
+  {
+    "id": 5,
+    "name": "댄스연습 특화 스튜디오",
+    "address": "서울 동대문구",
+    "price": 12000,
+    "image": "/mock/venue5.jpg"
+  },
+  {
+    "id": 6,
+    "name": "인디밴드 전용 연습실",
+    "address": "서울 마포구 합정",
+    "price": 9000,
+    "image": "/mock/venue6.jpg"
+  }
+]
