@@ -1,4 +1,4 @@
-// App.js
+// src/App.js
 import React from "react";
 import { Routes, Route } from "react-router-dom";
 import Home from "./pages/Home";
@@ -8,18 +8,16 @@ import ForgotPassword from "./pages/ForgotPassword";
 import VenueDetail from "./pages/VenueDetail";
 import CategoryPage from "./pages/CategoryPage";
 
-function App() {
+export default function App() {
   return (
     <Routes>
       <Route path="/" element={<Home />} />
       <Route path="/login" element={<Login />} />
-      <Route path="signup" element={<SignUp />} />
+      <Route path="/signup" element={<SignUp />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/venue/:id" element={<VenueDetail />} />
-      <Route path="/category/:label" element={<CategoryPage />} />
-      {/* 추가적인 라우팅은 여기 */}
+      {/* ✅ 카테고리는 숫자 ID 파라미터로 */}
+      <Route path="/category/:categoryId" element={<CategoryPage />} />
     </Routes>
   );
 }
-
-export default App;
