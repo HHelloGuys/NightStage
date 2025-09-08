@@ -7,6 +7,8 @@ import SignUp from "./pages/SignUp";
 import ForgotPassword from "./pages/ForgotPassword";
 import VenueDetail from "./pages/VenueDetail";
 import CategoryPage from "./pages/CategoryPage";
+import KakaoCallback from "./pages/KakaoCallback";
+import NaverCallback from "./pages/NaverCallback";
 
 export default function App() {
   return (
@@ -18,6 +20,9 @@ export default function App() {
       <Route path="/venue/:id" element={<VenueDetail />} />
       {/* ✅ 카테고리는 숫자 ID 파라미터로 */}
       <Route path="/category/:categoryId" element={<CategoryPage />} />
+      <Route path="/auth/kakao/callback" element={<KakaoCallback />} />
+      <Route path="/auth/naver/callback" element={<NaverCallback />} />
     </Routes>
   );
 }
+

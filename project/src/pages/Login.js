@@ -1,9 +1,42 @@
+// src/pages/Login.js
 import React from "react";
 import Header from "../components/Header";
 import Footer from "../components/Footer";
 import { Link } from "react-router-dom";
 
 function Login() {
+  const KAKAO_CLIENT_ID = process.env.REACT_APP_KAKAO_CLIENT_ID;
+  const NAVER_CLIENT_ID = process.env.REACT_APP_NAVER_CLIENT_ID;
+  const KAKAO_REDIRECT_URI = process.env.REACT_APP_KAKAO_REDIRECT_URI;
+  const NAVER_REDIRECT_URI = process.env.REACT_APP_NAVER_REDIRECT_URI;
+
+  const onClickKakao = () => {
+    // OAuth 2.0 Authorization Code (KaKao)
+    const params = new URLSearchParams({
+      client_id: KAKAO_CLIENT_ID,
+      redirect_uri: KAKAO_REDIRECT_URI,
+      response_type: "code",
+      // scope는 필요 시 추가 (예: "profile_nickname account_email")
+      // scope: "profile_nickname account_email",
+    });
+    window.location.assign(`https://kauth.kakao.com/oauth/authorize?${params.toString()}`);
+  };
+
+  const onClickNaver = () => {
+    // OAuth 2.0 Authorization Code (Naver)
+    // state는 CSRF 방지용 랜덤 문자열 (여기서는 간단히 time 사용)
+    const state = `${Date.now()}_naver`;
+    sessionStorage.setItem("naver_oauth_state", state);
+
+    const params = new URLSearchParams({
+      client_id: NAVER_CLIENT_ID,
+      redirect_uri: NAVER_REDIRECT_URI,
+      response_type: "code",
+      state,
+    });
+    window.location.assign(`https://nid.naver.com/oauth2.0/authorize?${params.toString()}`);
+  };
+
   return (
     <div>
       <Header />
@@ -12,7 +45,7 @@ function Login() {
         display: "flex",
         justifyContent: "center",
         alignItems: "center",
-        minHeight: "80vh",  // Header/Footer 공간 제외
+        minHeight: "80vh",
         backgroundColor: "#f8f8f8"
       }}>
         <div style={{
@@ -26,13 +59,13 @@ function Login() {
           <h2 style={{ marginBottom: "1.5rem" }}>게스트 로그인</h2>
 
           {/* 네이버 로그인 */}
-          <div style={btnStyle}>
+          <div style={btnStyle} onClick={onClickNaver}>
             <img src="/naver_logo.png" alt="네이버" style={iconStyle} />
             <span>네이버로 로그인</span>
           </div>
 
           {/* 카카오 로그인 */}
-          <div style={btnStyle}>
+          <div style={btnStyle} onClick={onClickKakao}>
             <img src="/kakao_logo.png" alt="카카오" style={iconStyle} />
             <span>카카오로 로그인</span>
           </div>
