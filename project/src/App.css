@@ -36,3 +36,35 @@
     transform: rotate(360deg);
   }
 }
+
+/* 3열 타일형 카드 그리드 */
+.cards-grid {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto 2rem;
+  padding: 0 1.25rem;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr); /* 기본 3열 */
+  gap: 24px; /* 가로/세로 간격 */
+}
+
+.cards-grid__item {
+  display: flex;
+}
+
+.cards-grid__item > * {
+  flex: 1; /* VenueCard를 같은 높이로 */
+}
+
+/* 반응형: 화면 줄어들면 열 수 줄이기 */
+@media (max-width: 1200px) {
+  .cards-grid {
+    grid-template-columns: repeat(2, 1fr); /* 2열 */
+  }
+}
+@media (max-width: 640px) {
+  .cards-grid {
+    grid-template-columns: 1fr; /* 1열 */
+    gap: 16px;
+  }
+}
