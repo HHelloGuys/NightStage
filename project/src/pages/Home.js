@@ -1,5 +1,6 @@
 // src/pages/Home.js
 import React, { useEffect, useState, useRef, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import Header from "../components/Header";
 import IconFilters from "../components/IconFilters";
 import VenueCard from "../components/VenueCard";
@@ -7,7 +8,7 @@ import ReviewCard from "../components/ReviewCard";
 import Footer from "../components/Footer";
 import api from "../api"; // baseURL: http://localhost:4000/api
 
-// 🔑 네 OAuth 클라이언트 ID
+// 🔑 Google OAuth 클라이언트 ID (네 값으로 교체 가능)
 const GOOGLE_CLIENT_ID =
   "913446817762-5knrr2vm42199tkma0f0beq4e1gu1r12.apps.googleusercontent.com";
 
@@ -18,7 +19,7 @@ const GOOGLE_DISCOVERY_DOCS = [
 const GOOGLE_SCOPES =
   "https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly";
 
-// 외부 스크립트 로더(중복 로드 방지)
+// 외부 스크립트 1회 로더
 function loadScriptOnce(src, id) {
   return new Promise((resolve, reject) => {
     if (id && document.getElementById(id)) return resolve();
@@ -32,34 +33,36 @@ function loadScriptOnce(src, id) {
   });
 }
 
-// public 경로 보정: "/mock/xxx.jpg" → "<PUBLIC_URL>/mock/xxx.jpg"
+// public 경로 보정
 const toPublic = (p) => {
   if (!p) return "";
-  if (/^https?:\/\//i.test(p)) return p; // 외부 URL은 그대로
+  if (/^https?:\/\//i.test(p)) return p;
   return (process.env.PUBLIC_URL || "") + p;
 };
 
 export default function Home() {
-  // ====== 장소 목록 상태 ======
+  const navigate = useNavigate();
+
+  // ===== 장소 =====
   const [venues, setVenues] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [loading, setLoading] = useState(false);
   const [errMsg, setErrMsg] = useState("");
 
-  // ====== 후기 목록 상태 ======
+  // ===== 후기 =====
   const [reviews, setReviews] = useState([]);
   const [rLoading, setRLoading] = useState(false);
   const [rErrMsg, setRErrMsg] = useState("");
 
-  // ====== 구글 캘린더 상태(선택) ======
-  const [gapiReady, setGapiReady] = useState(false);
+  // ===== Google Calendar =====
+  const [gapiReady, setGapiReady] = useState(false); // ✅ UI에서 사용
   const [gcAuthed, setGcAuthed] = useState(
     () => localStorage.getItem("gc_authed") === "1"
-  );
-  const [busy, setBusy] = useState(false);
+  ); // ✅ UI/로직에서 사용
+  const [busy, setBusy] = useState(false); // ✅ 버튼 disabled에 사용
   const tokenClientRef = useRef(null);
 
-  // API 응답을 카드 형태로 맵핑
+  // API -> 카드 형태
   const toCardShape = (r = {}) => ({
     id: r.stageId,
     name: r.stageName,
@@ -68,32 +71,35 @@ export default function Home() {
     price: r.price ?? 0,
   });
 
-  // 장소 목록 불러오기
-  const fetchVenues = useCallback(async (categoryId = null) => {
-    setLoading(true);
-    setErrMsg("");
-    try {
-      const params = { page: 0, size: 10 };
-      if (categoryId != null) params.categoryId = categoryId;
+  // 장소 조회 (초기/카테고리 변경시)
+  const fetchVenues = useCallback(
+    async (categoryId = null) => {
+      setLoading(true);
+      setErrMsg("");
+      try {
+        const params = { page: 0, size: 10 };
+        if (categoryId != null) params.categoryId = categoryId;
 
-      const res = await api.get("/stages", { params });
-      const page = res?.data?.data;
-      const list = Array.isArray(page?.content) ? page.content : [];
-      setVenues(list.map(toCardShape));
-    } catch (e) {
-      console.error(
-        "[GET] /stages 실패:",
-        e?.response?.status,
-        e?.response?.data || e.message
-      );
-      setVenues([]);
-      setErrMsg("공간 목록을 불러오지 못했습니다.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+        const res = await api.get("/stages", { params });
+        const page = res?.data?.data;
+        const list = Array.isArray(page?.content) ? page.content : [];
+        setVenues(list.map(toCardShape));
+      } catch (e) {
+        console.error(
+          "[GET] /stages 실패:",
+          e?.response?.status,
+          e?.response?.data || e.message
+        );
+        setVenues([]);
+        setErrMsg("공간 목록을 불러오지 못했습니다.");
+      } finally {
+        setLoading(false);
+      }
+    },
+    []
+  );
 
-  // 후기 목록 불러오기 (public/mock/reviews.json) + 이미지 경로 보정
+  // 후기
   const fetchReviews = useCallback(async () => {
     setRLoading(true);
     setRErrMsg("");
@@ -117,11 +123,21 @@ export default function Home() {
 
   // 최초 로드
   useEffect(() => {
-    fetchVenues();
+    fetchVenues(null);
     fetchReviews();
   }, [fetchVenues, fetchReviews]);
 
-  // ====== (선택) 구글 캘린더 연동 ======
+  // 🔎 헤더 검색 → CategoryPage로 이동
+  const handleSearch = (keyword = "") => {
+    const q = (keyword || "").trim();
+    if (q) {
+      navigate(`/category?q=${encodeURIComponent(q)}`);
+    } else {
+      navigate(`/category`);
+    }
+  };
+
+  // ===== Google Calendar 스크립트 로드
   useEffect(() => {
     (async () => {
       try {
@@ -130,13 +146,15 @@ export default function Home() {
           "https://accounts.google.com/gsi/client",
           "google-identity"
         );
-        setGapiReady(true);
+        setGapiReady(true); // ✅ 읽히므로 경고 없음
       } catch (e) {
         console.error("Google scripts load failed:", e);
+        setGapiReady(false);
       }
     })();
   }, []);
 
+  // gapi client 준비
   const ensureGapiClient = async () => {
     if (!window.gapi) throw new Error("gapi not loaded");
     await new Promise((resolve) => window.gapi.load("client", resolve));
@@ -145,6 +163,7 @@ export default function Home() {
     }
   };
 
+  // GIS token client 준비
   const ensureTokenClient = () => {
     if (!window.google || !window.google.accounts?.oauth2) {
       throw new Error("Google Identity Services not loaded");
@@ -159,36 +178,13 @@ export default function Home() {
     return tokenClientRef.current;
   };
 
-  // 새로고침/재방문 시 조용히 토큰 재발급
-  useEffect(() => {
-    (async () => {
-      if (!gapiReady || !gcAuthed) return;
-      try {
-        await ensureGapiClient();
-        const tokenClient = ensureTokenClient();
-        tokenClient.callback = (res) => {
-          if (res && res.access_token) {
-            setGcAuthed(true);
-            localStorage.setItem("gc_authed", "1");
-          } else {
-            setGcAuthed(false);
-            localStorage.removeItem("gc_authed");
-          }
-        };
-        tokenClient.requestAccessToken({ prompt: "" });
-      } catch (e) {
-        console.warn("Silent token refresh failed:", e);
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gapiReady]);
-
+  // 캘린더 연결
   const connectCalendar = async () => {
     try {
       setBusy(true);
-      if (!gapiReady) throw new Error("Google scripts not ready yet");
-      await ensureGapiClient();
-      const tokenClient = ensureTokenClient();
+      if (!gapiReady) throw new Error("Google scripts not ready");
+      await ensureGapiClient(); // ✅ 사용
+      const tokenClient = ensureTokenClient(); // ✅ 사용
       tokenClient.callback = (res) => {
         if (res && res.access_token) {
           setGcAuthed(true);
@@ -205,10 +201,11 @@ export default function Home() {
     }
   };
 
+  // 예시 이벤트 추가
   const addQuickEvent = async () => {
     try {
       setBusy(true);
-      await ensureGapiClient();
+      await ensureGapiClient(); // ✅ 사용
       if (!window.gapi.client.getToken()) {
         await connectCalendar();
         return;
@@ -234,6 +231,7 @@ export default function Home() {
     }
   };
 
+  // 캘린더 열기 / 연동 해제
   const openCalendar = () => {
     window.open(
       "https://calendar.google.com/calendar/u/0/r",
@@ -241,7 +239,6 @@ export default function Home() {
       "noopener,noreferrer"
     );
   };
-
   const disconnectCalendar = async () => {
     try {
       const t = window.gapi?.client?.getToken();
@@ -257,10 +254,13 @@ export default function Home() {
     alert("구글 캘린더 연동이 해제되었습니다.");
   };
 
-  // ====== UI ======
+  // ===== UI =====
+  const fabDisabled = busy || (!gapiReady && !gcAuthed); // ✅ gapiReady가 실제로 사용됨
+
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
-      <Header />
+      {/* Header는 그대로, 검색 시 CategoryPage로 이동 */}
+      <Header onSearch={handleSearch} />
 
       <IconFilters
         onSelect={(categoryId) => {
@@ -311,38 +311,35 @@ export default function Home() {
 
       <Footer />
 
-      {/* (선택) 구글 캘린더 FAB */}
+      {/* Google Calendar FAB */}
       <div style={fabWrapStyle}>
         <button
           aria-label="Google Calendar Connect"
           onClick={gcAuthed ? openCalendar : connectCalendar}
-          disabled={busy}
+          disabled={fabDisabled}
           style={{
             ...fabStyle,
             background: gcAuthed ? "#34a853" : "#8b5cf6",
-            cursor: busy ? "default" : "pointer",
+            cursor: fabDisabled ? "default" : "pointer",
+            opacity: fabDisabled ? 0.7 : 1,
           }}
-          title={gcAuthed ? "구글 캘린더 열기" : "구글 캘린더 연동"}
+          title={
+            gcAuthed
+              ? "구글 캘린더 열기"
+              : gapiReady
+              ? "구글 캘린더 연동"
+              : "Google 스크립트 로딩 중…"
+          }
         >
           {gcAuthed ? "📅" : "+"}
         </button>
 
         {gcAuthed && (
           <div style={{ display: "flex", gap: "0.5rem" }}>
-            <button
-              onClick={addQuickEvent}
-              disabled={busy}
-              style={miniBtnStyle}
-              title="예시 이벤트 추가"
-            >
-              이벤트 추가
+            <button onClick={addQuickEvent} disabled={busy} style={miniBtnStyle} title="예시 이벤트 추가">
+              {busy ? "처리 중…" : "이벤트 추가"}
             </button>
-            <button
-              onClick={disconnectCalendar}
-              disabled={busy}
-              style={miniBtnStyle}
-              title="연동 해제"
-            >
+            <button onClick={disconnectCalendar} disabled={busy} style={miniBtnStyle} title="연동 해제">
               연동 해제
             </button>
           </div>
@@ -352,6 +349,7 @@ export default function Home() {
   );
 }
 
+/* --- styles --- */
 const fabWrapStyle = {
   position: "fixed",
   right: 20,
@@ -362,7 +360,6 @@ const fabWrapStyle = {
   gap: "0.5rem",
   zIndex: 1000,
 };
-
 const fabStyle = {
   width: 56,
   height: 56,
@@ -372,7 +369,6 @@ const fabStyle = {
   fontSize: "1.6rem",
   boxShadow: "0 8px 16px rgba(0,0,0,0.2)",
 };
-
 const miniBtnStyle = {
   border: "none",
   padding: "0.5rem 0.75rem",
