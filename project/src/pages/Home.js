@@ -7,18 +7,15 @@ import ReviewCard from "../components/ReviewCard";
 import Footer from "../components/Footer";
 import api from "../api"; // baseURL: http://localhost:4000/api
 
-// 🔑 네 OAuth 클라이언트 ID
+// (선택) Google Calendar 연동 - 기존 유지
 const GOOGLE_CLIENT_ID =
   "913446817762-5knrr2vm42199tkma0f0beq4e1gu1r12.apps.googleusercontent.com";
-
-// Google Calendar 설정
 const GOOGLE_DISCOVERY_DOCS = [
   "https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest",
 ];
 const GOOGLE_SCOPES =
   "https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly";
 
-// 외부 스크립트 로더(중복 로드 방지)
 function loadScriptOnce(src, id) {
   return new Promise((resolve, reject) => {
     if (id && document.getElementById(id)) return resolve();
@@ -32,26 +29,29 @@ function loadScriptOnce(src, id) {
   });
 }
 
-// public 경로 보정: "/mock/xxx.jpg" → "<PUBLIC_URL>/mock/xxx.jpg"
-const toPublic = (p) => {
+// 백엔드 static/절대 URL 모두 대응
+const ASSET_BASE = process.env.REACT_APP_ASSET_BASE || ""; // 예: http://localhost:4000
+const toImageUrl = (p) => {
   if (!p) return "";
-  if (/^https?:\/\//i.test(p)) return p; // 외부 URL은 그대로
-  return (process.env.PUBLIC_URL || "") + p;
+  const norm = String(p).replace(/\\/g, "/").trim();
+  if (/^https?:\/\//i.test(norm)) return norm;                // 절대 URL
+  if (norm.startsWith("/")) return (ASSET_BASE || "") + norm;  // /images/... → http://localhost:4000/images/...
+  return (ASSET_BASE ? ASSET_BASE + "/" : (process.env.PUBLIC_URL || "") + "/") + norm.replace(/^\/+/, "");
 };
 
 export default function Home() {
-  // ====== 장소 목록 상태 ======
+  // ====== 장소 목록 ======
   const [venues, setVenues] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [loading, setLoading] = useState(false);
   const [errMsg, setErrMsg] = useState("");
 
-  // ====== 후기 목록 상태 ======
+  // ====== 후기 목록 (DB 전용) ======
   const [reviews, setReviews] = useState([]);
   const [rLoading, setRLoading] = useState(false);
   const [rErrMsg, setRErrMsg] = useState("");
 
-  // ====== 구글 캘린더 상태(선택) ======
+  // ====== (선택) 구글 캘린더 ======
   const [gapiReady, setGapiReady] = useState(false);
   const [gcAuthed, setGcAuthed] = useState(
     () => localStorage.getItem("gc_authed") === "1"
@@ -59,16 +59,16 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const tokenClientRef = useRef(null);
 
-  // API 응답을 카드 형태로 맵핑
+  // StageEntity → VenueCard 매핑
   const toCardShape = (r = {}) => ({
     id: r.stageId,
     name: r.stageName,
-    image: r.stagePicture || "",
+    image: toImageUrl(r.stagePicture || ""),
     address: r.location || "",
     price: r.price ?? 0,
   });
 
-  // 장소 목록 불러오기
+  // 장소 목록
   const fetchVenues = useCallback(async (categoryId = null) => {
     setLoading(true);
     setErrMsg("");
@@ -77,15 +77,11 @@ export default function Home() {
       if (categoryId != null) params.categoryId = categoryId;
 
       const res = await api.get("/stages", { params });
-      const page = res?.data?.data;
+      const page = res?.data?.data ?? res?.data;
       const list = Array.isArray(page?.content) ? page.content : [];
       setVenues(list.map(toCardShape));
     } catch (e) {
-      console.error(
-        "[GET] /stages 실패:",
-        e?.response?.status,
-        e?.response?.data || e.message
-      );
+      console.error("[GET] /stages 실패:", e?.response?.status, e?.response?.data || e.message);
       setVenues([]);
       setErrMsg("공간 목록을 불러오지 못했습니다.");
     } finally {
@@ -93,23 +89,41 @@ export default function Home() {
     }
   }, []);
 
-  // 후기 목록 불러오기 (public/mock/reviews.json) + 이미지 경로 보정
+  // ✅ 후기 목록: DB에서만 가져옴 (목 폴백 완전 제거)
   const fetchReviews = useCallback(async () => {
     setRLoading(true);
     setRErrMsg("");
     try {
-      const res = await fetch("/mock/reviews.json", { cache: "no-store" });
-      if (!res.ok) throw new Error(res.statusText);
-      const data = await res.json();
-      const safe = (Array.isArray(data) ? data : []).map((r) => ({
-        ...r,
-        image: toPublic(r.image),
+      const res = await api.get("/reviews", {
+        params: { page: 0, size: 4, sort: "reviewId,desc" },
+      });
+
+      console.log("[/api/reviews] response:", res?.data);
+
+      // ApiResponse<T> 또는 Page 그대로 오는 경우 모두 지원
+      const payload = res?.data;
+      const pageLike =
+        (payload && payload.success !== undefined ? payload.data : payload) || {};
+
+      const rows = Array.isArray(pageLike?.content)
+        ? pageLike.content
+        : Array.isArray(pageLike)
+        ? pageLike
+        : [];
+
+      const mapped = rows.map((r) => ({
+        id: r.reviewId ?? r.id,
+        image: toImageUrl(r.reviewPicture || r.review_picture || r.image || ""),
+        title: r.title || (r.rating != null ? `★ ${r.rating}` : "후기"),
+        description: r.content || r.description || "",
+        tags: [],
       }));
-      setReviews(safe);
+
+      setReviews(mapped);
     } catch (e) {
-      console.error("[GET] /mock/reviews.json 실패:", e.message);
-      setReviews([]);
+      console.warn("[GET] /api/reviews 실패:", e?.response?.status, e?.message);
       setRErrMsg("후기를 불러오지 못했습니다.");
+      setReviews([]); // 목 폴백 없음
     } finally {
       setRLoading(false);
     }
@@ -126,10 +140,7 @@ export default function Home() {
     (async () => {
       try {
         await loadScriptOnce("https://apis.google.com/js/api.js", "google-api");
-        await loadScriptOnce(
-          "https://accounts.google.com/gsi/client",
-          "google-identity"
-        );
+        await loadScriptOnce("https://accounts.google.com/gsi/client", "google-identity");
         setGapiReady(true);
       } catch (e) {
         console.error("Google scripts load failed:", e);
@@ -159,7 +170,6 @@ export default function Home() {
     return tokenClientRef.current;
   };
 
-  // 새로고침/재방문 시 조용히 토큰 재발급
   useEffect(() => {
     (async () => {
       if (!gapiReady || !gcAuthed) return;
@@ -235,11 +245,7 @@ export default function Home() {
   };
 
   const openCalendar = () => {
-    window.open(
-      "https://calendar.google.com/calendar/u/0/r",
-      "_blank",
-      "noopener,noreferrer"
-    );
+    window.open("https://calendar.google.com/calendar/u/0/r", "_blank", "noopener,noreferrer");
   };
 
   const disconnectCalendar = async () => {
@@ -283,9 +289,7 @@ export default function Home() {
             {venues.map((v) => (
               <VenueCard key={v.id} venue={v} />
             ))}
-            {venues.length === 0 && (
-              <div style={{ color: "#666" }}>표시할 공간이 없습니다.</div>
-            )}
+            {venues.length === 0 && <div style={{ color: "#666" }}>표시할 공간이 없습니다.</div>}
           </div>
         )}
       </section>
@@ -299,12 +303,10 @@ export default function Home() {
 
         {!rLoading && !rErrMsg && (
           <div style={{ display: "flex", gap: "1rem", overflowX: "auto" }}>
-            {reviews.map((rv) => (
-              <ReviewCard key={rv.id} review={rv} />
+            {reviews.map((rv, i) => (
+              <ReviewCard key={rv.id ?? i} review={rv} />
             ))}
-            {reviews.length === 0 && (
-              <div style={{ color: "#666" }}>표시할 후기가 없습니다.</div>
-            )}
+            {reviews.length === 0 && <div style={{ color: "#666" }}>표시할 후기가 없습니다.</div>}
           </div>
         )}
       </section>
@@ -329,20 +331,10 @@ export default function Home() {
 
         {gcAuthed && (
           <div style={{ display: "flex", gap: "0.5rem" }}>
-            <button
-              onClick={addQuickEvent}
-              disabled={busy}
-              style={miniBtnStyle}
-              title="예시 이벤트 추가"
-            >
+            <button onClick={addQuickEvent} disabled={busy} style={miniBtnStyle} title="예시 이벤트 추가">
               이벤트 추가
             </button>
-            <button
-              onClick={disconnectCalendar}
-              disabled={busy}
-              style={miniBtnStyle}
-              title="연동 해제"
-            >
+            <button onClick={disconnectCalendar} disabled={busy} style={miniBtnStyle} title="연동 해제">
               연동 해제
             </button>
           </div>

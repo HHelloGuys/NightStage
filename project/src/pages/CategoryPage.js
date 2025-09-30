@@ -23,24 +23,54 @@ const toCard = (r = {}) => ({
   price: r.price ?? 0,
 });
 
+// slug("작업실" 또는 "1") → 실제 categoryId(숫자)로 변환
+const resolveCategoryId = async (raw) => {
+  if (!raw) return null;
+  const s = decodeURIComponent(String(raw));
+  if (/^\d+$/.test(s)) return Number(s); // 이미 숫자면 그대로
+  const res = await api.get("/categories");
+  const list = res?.data?.data ?? res?.data ?? [];
+  const found = Array.isArray(list) ? list.find((c) => c.categoryName === s) : null;
+  return found?.categoryId ?? null;
+};
+
 export default function CategoryPage() {
-  const { categoryId } = useParams(); // /category/:categoryId
+  const { slug: categorySlug } = useParams(); // /category/:slug  (이름/숫자 모두 지원)
   const [showFilters, setShowFilters] = useState(false);
   const [showMap, setShowMap] = useState(false);
   const [venues, setVenues] = useState([]);
   const [loading, setLoading] = useState(false);
   const [errMsg, setErrMsg] = useState("");
+  const [title, setTitle] = useState("");
 
   // 목록 불러오기 (백엔드 → mock 폴백)
   const fetchList = useCallback(async () => {
     setLoading(true);
     setErrMsg("");
     try {
-      const params = { page: 0, size: 24 };
-      if (categoryId) params.categoryId = Number(categoryId);
+      // 1) slug(이름/숫자) → 실제 categoryId
+      const cid = await resolveCategoryId(categorySlug);
+      if (!cid) {
+        setVenues([]);
+        setTitle("");
+        setErrMsg("카테고리를 찾을 수 없습니다.");
+        return;
+      }
 
+      // 제목용 이름도 가져오기
+      try {
+        const cRes = await api.get("/categories");
+        const cats = cRes?.data?.data ?? cRes?.data ?? [];
+        const found = Array.isArray(cats) ? cats.find((c) => c.categoryId === cid) : null;
+        setTitle(found?.categoryName || "");
+      } catch {
+        setTitle("");
+      }
+
+      // 2) 백엔드 호출
+      const params = { page: 0, size: 24, categoryId: cid };
       const res = await api.get("/stages", { params });
-      const page = res?.data?.data;
+      const page = res?.data?.data ?? res?.data;
       const list = Array.isArray(page?.content) ? page.content : [];
       setVenues(list.map(toCard));
     } catch (e) {
@@ -49,9 +79,10 @@ export default function CategoryPage() {
         const r = await fetch("/mock/venues.json", { cache: "no-store" });
         let arr = (await r.json()) || [];
         if (!Array.isArray(arr)) arr = [];
-        // mock에 categoryId 필드가 있으면 필터
-        if (categoryId && arr.length && "categoryId" in (arr[0] || {})) {
-          arr = arr.filter((v) => String(v.categoryId) === String(categoryId));
+
+        const cid = await resolveCategoryId(categorySlug);
+        if (cid && arr.length && "categoryId" in (arr[0] || {})) {
+          arr = arr.filter((v) => String(v.categoryId) === String(cid));
         }
         setVenues(arr.map(toCard));
       } catch {
@@ -61,7 +92,7 @@ export default function CategoryPage() {
     } finally {
       setLoading(false);
     }
-  }, [categoryId]);
+  }, [categorySlug]);
 
   useEffect(() => {
     fetchList();
@@ -84,7 +115,8 @@ export default function CategoryPage() {
     if (window.kakao?.maps) {
       init();
     } else {
-      const key = process.env.REACT_APP_KAKAO_MAP_KEY || "664f6627af84ac9dcac04b76afbafbd5"; // TODO: .env로 이동
+      const key =
+        process.env.REACT_APP_KAKAO_MAP_KEY || "664f6627af84ac9dcac04b76afbafbd5"; // TODO: .env로 이동
       const s = document.createElement("script");
       s.src = `//dapi.kakao.com/v2/maps/sdk.js?appkey=${key}&autoload=false`;
       s.onload = init;
@@ -96,13 +128,24 @@ export default function CategoryPage() {
     <div>
       <Header />
 
+      {/* 타이틀 */}
+      <div style={{ textAlign: "center", marginTop: 16, fontSize: 18, fontWeight: 600 }}>
+        {title ? `${title} 공간` : loading ? "로딩 중…" : "카테고리"}
+      </div>
+
       {/* 상단 필터/지도 토글 */}
-      <div style={{ display: "flex", justifyContent: "center", gap: "1rem", margin: "1rem auto" }}>
+      <div
+        style={{ display: "flex", justifyContent: "center", gap: "1rem", margin: "1rem auto" }}
+      >
         <input type="text" placeholder="지역" style={inputStyle} />
         <input type="text" placeholder="인원" style={inputStyle} />
         <input type="text" placeholder="날짜" style={inputStyle} />
-        <button style={buttonStyle} onClick={() => setShowFilters(true)}>⚙️ 필터</button>
-        <button style={buttonStyle} onClick={() => setShowMap((v) => !v)}>{showMap ? "리스트" : "🗺 지도"}</button>
+        <button style={buttonStyle} onClick={() => setShowFilters(true)}>
+          ⚙️ 필터
+        </button>
+        <button style={buttonStyle} onClick={() => setShowMap((v) => !v)}>
+          {showMap ? "리스트" : "🗺 지도"}
+        </button>
       </div>
 
       {/* 정렬 탭 자리 */}
@@ -112,7 +155,13 @@ export default function CategoryPage() {
       {showMap && (
         <div
           id="category-map"
-          style={{ width: "90%", height: 400, margin: "0 auto 1.5rem", borderRadius: 8, border: "1px solid #eee" }}
+          style={{
+            width: "90%",
+            height: 400,
+            margin: "0 auto 1.5rem",
+            borderRadius: 8,
+            border: "1px solid #eee",
+          }}
         />
       )}
 
@@ -125,7 +174,7 @@ export default function CategoryPage() {
           padding: 0 1.25rem;
           display: grid;
           grid-template-columns: repeat(3, 1fr); /* 기본 3열 */
-          gap: 24px; /* 가로/세로 간격 */
+          gap: 24px;
         }
         .cards-grid__item { display: flex; }
         .cards-grid__item > * { flex: 1; } /* VenueCard 동일 높이 */
@@ -138,7 +187,7 @@ export default function CategoryPage() {
         }
       `}</style>
 
-      {/* 리스트: 3열 그리드(반응형) */}
+      {/* 리스트 */}
       <main className="cards-grid">
         {loading && <div style={{ color: "#666" }}>불러오는 중…</div>}
         {!loading && errMsg && <div style={{ color: "#b91c1c" }}>{errMsg}</div>}
@@ -147,7 +196,8 @@ export default function CategoryPage() {
           <div style={{ color: "#666" }}>표시할 공간이 없습니다.</div>
         )}
 
-        {!loading && !errMsg &&
+        {!loading &&
+          !errMsg &&
           venues.map((v) => (
             <div key={v.id} className="cards-grid__item">
               <VenueCard venue={v} />

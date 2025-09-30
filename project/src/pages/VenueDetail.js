@@ -1,34 +1,95 @@
+// src/pages/VenueDetail.js
 import React, { useEffect, useState, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import Header from "../components/Header";
 import Footer from "../components/Footer";
-import axios from "axios"; // 또는 api 인스턴스 쓰면 교체
+import axios from "axios";
 
-function VenueDetail() {
+// 백엔드 정적 파일 호스트 (이미지 경로 보정용)
+// 필요시 .env 에 REACT_APP_ASSET_BASE=http://localhost:4000
+const ASSET_BASE = process.env.REACT_APP_ASSET_BASE || "http://localhost:4000";
+
+// 상대/루트/절대 경로 모두 안전 처리
+const toImageUrl = (p) => {
+  if (!p) return (process.env.PUBLIC_URL || "") + "/mock/detail.jpg";
+  const norm = String(p).replace(/\\/g, "/").trim();
+  if (/^https?:\/\//i.test(norm)) return norm;                   // 절대 URL
+  if (norm.startsWith("/mock/")) return (process.env.PUBLIC_URL || "") + norm; // 프론트 public
+  if (norm.startsWith("/")) return ASSET_BASE + norm;             // 백엔드 루트
+  return ASSET_BASE + "/" + norm.replace(/^\/+/, "");             // 상대경로 → 백엔드 기준
+};
+
+export default function VenueDetail() {
   const { id } = useParams();
+
+  // 공간 상세
   const [venue, setVenue] = useState(null);
+  const [errMsg, setErrMsg] = useState("");
+
+  // 탭
   const [activeTab, setActiveTab] = useState("공간소개");
 
+  // 후기
+  const [reviews, setReviews] = useState([]);
+  const [rLoading, setRLoading] = useState(false);
+  const [rErr, setRErr] = useState("");
+
+  // 상세 불러오기
   useEffect(() => {
     if (!id) return;
-    axios.get(`/api/stages/${id}`)
+    setErrMsg("");
+    axios
+      .get(`/api/stages/${id}`)
       .then((res) => setVenue(res?.data?.data ?? res?.data))
-      .catch((err) => console.error("공연장 불러오기 실패:", err));
+      .catch((err) => {
+        console.error("공연장 불러오기 실패:", err);
+        setErrMsg("공연장 정보를 불러오지 못했습니다.");
+      });
   }, [id]);
 
-  const hasCoords =
-    venue && Number.isFinite(venue.lat) && Number.isFinite(venue.lng);
+  // 후기 불러오기
+  const fetchReviews = useCallback(async () => {
+    if (!id) return;
+    setRLoading(true);
+    setRErr("");
+    try {
+      const res = await axios.get(`/api/reviews`, {
+        params: { stageId: id, page: 0, size: 6 },
+      });
+      const page = res?.data?.data ?? res?.data;
+      const rows = Array.isArray(page?.content) ? page.content : [];
+      const mapped = rows.map((r) => ({
+        id: r.reviewId,
+        image: toImageUrl(r.reviewPicture || r.review_picture),
+        rating: r.rating,
+        content: r.content || "",
+      }));
+      setReviews(mapped);
+    } catch (e) {
+      console.error("[GET] /api/reviews 실패:", e);
+      setRErr("후기를 불러오지 못했습니다.");
+      setReviews([]);
+    } finally {
+      setRLoading(false);
+    }
+  }, [id]);
 
+  // 후기 탭 들어왔을 때만 호출 (id 바뀌어도 다시 호출)
+  useEffect(() => {
+    if (activeTab === "후기") fetchReviews();
+  }, [activeTab, fetchReviews]);
+
+  // 지도
+  const hasCoords = venue && Number.isFinite(venue.lat) && Number.isFinite(venue.lng);
   const loadMap = useCallback(() => {
     if (!hasCoords) return;
     if (window.kakao?.maps) {
-      const container = document.getElementById("map");
-      if (!container) return;
-      const options = {
+      const el = document.getElementById("map");
+      if (!el) return;
+      new window.kakao.maps.Map(el, {
         center: new window.kakao.maps.LatLng(venue.lat, venue.lng),
         level: 3,
-      };
-      new window.kakao.maps.Map(container, options);
+      });
     }
   }, [venue, hasCoords]);
 
@@ -38,10 +99,12 @@ function VenueDetail() {
     }
   }, [activeTab, hasCoords, loadMap]);
 
+  if (errMsg) return <div style={{ padding: "2rem", color: "#b91c1c" }}>{errMsg}</div>;
   if (!venue) return <div style={{ padding: "2rem" }}>로딩 중...</div>;
 
+  // StageEntity 매핑
   const stageName = venue.stageName || "공연장";
-  const imageSrc = venue.stagePicture || "/mock/detail.jpg";
+  const imageSrc = toImageUrl(venue.stagePicture);
   const introduction = venue.stageIntroduction || "";
   const facility = venue.stageFacility || "";
   const rules = venue.stageNotice || "";
@@ -56,8 +119,10 @@ function VenueDetail() {
   return (
     <>
       <Header />
+
       <div style={{ padding: "2rem", maxWidth: "1200px", margin: "0 auto" }}>
         <div style={{ display: "flex", gap: "2rem" }}>
+          {/* 좌측: 상세/탭 */}
           <div style={{ flex: 2 }}>
             <img
               src={imageSrc}
@@ -65,7 +130,12 @@ function VenueDetail() {
               style={{ width: "100%", height: 400, objectFit: "cover", borderRadius: 8 }}
               loading="lazy"
               decoding="async"
+              onError={(e) => {
+                e.currentTarget.onerror = null;
+                e.currentTarget.src = (process.env.PUBLIC_URL || "") + "/mock/detail.jpg";
+              }}
             />
+
             <h2 style={{ marginTop: "1rem" }}>{stageName}</h2>
             <p style={{ color: "#666", marginTop: 4 }}>
               {location}
@@ -76,6 +146,7 @@ function VenueDetail() {
             {openHours && <p style={{ color: "#666" }}>⏰ {openHours}</p>}
             {contact && <p style={{ color: "#666" }}>☎️ {contact}</p>}
 
+            {/* 탭 */}
             <div style={{ display: "flex", borderBottom: "1px solid #eee", marginTop: "2rem" }}>
               {["공간소개", "시설안내", "이용규칙", "환불정책", "Q&A", "후기"].map((tab) => (
                 <div
@@ -93,6 +164,7 @@ function VenueDetail() {
               ))}
             </div>
 
+            {/* 탭 콘텐츠 */}
             <div style={{ padding: "1.5rem 0" }}>
               {activeTab === "공간소개" && (
                 <div style={{ whiteSpace: "pre-wrap" }}>{introduction || "소개 정보가 없습니다."}</div>
@@ -120,10 +192,63 @@ function VenueDetail() {
               )}
 
               {activeTab === "Q&A" && <div>Q&A 콘텐츠는 준비 중입니다.</div>}
-              {activeTab === "후기" && <div>후기 콘텐츠는 준비 중입니다. (리뷰 API 연결 시 표시)</div>}
+
+              {activeTab === "후기" && (
+                <div>
+                  {rLoading && <div style={{ color: "#666" }}>불러오는 중…</div>}
+                  {!rLoading && rErr && <div style={{ color: "#b91c1c" }}>{rErr}</div>}
+                  {!rLoading && !rErr && reviews.length === 0 && (
+                    <div style={{ color: "#666" }}>표시할 후기가 없습니다.</div>
+                  )}
+                  {!rLoading && !rErr && reviews.length > 0 && (
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(auto-fill, minmax(280px,1fr))",
+                        gap: 16,
+                      }}
+                    >
+                      {reviews.map((rv) => (
+                        <div
+                          key={rv.id}
+                          style={{
+                            border: "1px solid #eee",
+                            borderRadius: 8,
+                            overflow: "hidden",
+                            background: "#fff",
+                          }}
+                        >
+                          {rv.image && (
+                            <img
+                              src={rv.image}
+                              alt="리뷰 이미지"
+                              style={{ width: "100%", height: 150, objectFit: "cover" }}
+                              onError={(e) => {
+                                if (e.currentTarget.dataset.fallback) return;
+                                e.currentTarget.dataset.fallback = "1";
+                                e.currentTarget.src =
+                                  (process.env.PUBLIC_URL || "") + "/mock/detail.jpg";
+                              }}
+                              loading="lazy"
+                              decoding="async"
+                            />
+                          )}
+                          <div style={{ padding: 12 }}>
+                            <div style={{ fontWeight: 700, marginBottom: 6 }}>
+                              {Number.isFinite(rv.rating) ? `★ ${rv.rating}/5` : "리뷰"}
+                            </div>
+                            <div style={{ color: "#444", whiteSpace: "pre-wrap" }}>{rv.content}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
+          {/* 우측 예약 패널 (임시) */}
           <div
             style={{
               flex: 1,
@@ -146,9 +271,8 @@ function VenueDetail() {
           </div>
         </div>
       </div>
+
       <Footer />
     </>
   );
 }
-
-export default VenueDetail; // ⬅️ 이 줄이 반드시 있어야 함
