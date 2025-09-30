@@ -1,4 +1,4 @@
-# Getting Started with Create React App
+# 인디 가수들을 위한 무대 대여 시스템 플랫폼
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 

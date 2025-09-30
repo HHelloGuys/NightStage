@@ -22,6 +22,8 @@ export default function App() {
       <Route path="/category/:slug" element={<CategoryPage />} />
       <Route path="/auth/kakao/callback" element={<KakaoCallback />} />
       <Route path="/auth/naver/callback" element={<NaverCallback />} />
+      <Route path="/category" element={<CategoryPage />} />
+      <Route path="/category/:categoryId" element={<CategoryPage />} />
     </Routes>
   );
 }

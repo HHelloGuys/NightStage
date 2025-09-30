@@ -1,24 +1,17 @@
 // src/pages/CategoryPage.js
-import React, { useState, useEffect, useCallback } from "react";
-import { useParams } from "react-router-dom";
+import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { useLocation, useParams } from "react-router-dom";
 import Header from "../components/Header";
 import Footer from "../components/Footer";
 import FilterDrawer from "../components/FilterDrawer";
 import VenueCard from "../components/VenueCard";
-import api from "../api"; // baseURL: http://localhost:4000/api
+import api from "../api";
 
-// "/mock/xxx.jpg" → "<PUBLIC_URL>/mock/xxx.jpg"
-const toPublic = (p) => {
-  if (!p) return "";
-  if (/^https?:\/\//i.test(p)) return p;
-  return (process.env.PUBLIC_URL || "") + p;
-};
-
-// StageEntity → VenueCard props
+// 서버 응답 → 카드 형태로 변환 (이미지 경로 가공 없이 그대로 사용)
 const toCard = (r = {}) => ({
-  id: r.stageId ?? r.id,
-  name: r.stageName ?? r.name,
-  image: toPublic(r.stagePicture || r.image || ""),
+  id: r.stageId ?? r.id ?? Math.random().toString(36).slice(2),
+  name: r.stageName ?? r.name ?? "(이름 없음)",
+  image: r.stagePicture || r.image || "",
   address: r.location || r.address || "",
   price: r.price ?? 0,
 });
@@ -43,10 +36,11 @@ export default function CategoryPage() {
   const [errMsg, setErrMsg] = useState("");
   const [title, setTitle] = useState("");
 
-  // 목록 불러오기 (백엔드 → mock 폴백)
+  /* ------------------------- 목록 로딩 (경고 없음) ------------------------- */
   const fetchList = useCallback(async () => {
     setLoading(true);
     setErrMsg("");
+
     try {
       // 1) slug(이름/숫자) → 실제 categoryId
       const cid = await resolveCategoryId(categorySlug);
@@ -119,11 +113,63 @@ export default function CategoryPage() {
         process.env.REACT_APP_KAKAO_MAP_KEY || "664f6627af84ac9dcac04b76afbafbd5"; // TODO: .env로 이동
       const s = document.createElement("script");
       s.src = `//dapi.kakao.com/v2/maps/sdk.js?appkey=${key}&autoload=false`;
-      s.onload = init;
+      s.onload = () => window.kakao.maps.load(resolve);
       document.head.appendChild(s);
-    }
-  }, [showMap, loadMap]);
+    });
+  };
 
+  useEffect(() => {
+    if (!showMap) return;
+
+    (async () => {
+      await ensureKakao();
+
+      if (!mapObjRef.current && mapRef.current) {
+        mapObjRef.current = new window.kakao.maps.Map(mapRef.current, {
+          center: new window.kakao.maps.LatLng(37.5665, 126.9780),
+          level: 5,
+        });
+      }
+
+      const map = mapObjRef.current;
+      if (!map) return;
+
+      // 기존 마커 제거
+      markersRef.current.forEach((m) => m.setMap(null));
+      markersRef.current = [];
+
+      const coords = venues
+        .filter((v) => v.lat != null && v.lng != null)
+        .map((v) => ({
+          v,
+          pos: new window.kakao.maps.LatLng(Number(v.lat), Number(v.lng)),
+        }));
+
+      // 마커 추가 + 인포윈도우
+      coords.forEach(({ v, pos }) => {
+        const marker = new window.kakao.maps.Marker({ position: pos, clickable: true });
+        marker.setMap(map);
+        markersRef.current.push(marker);
+
+        const iw = new window.kakao.maps.InfoWindow({
+          content: `<div style="padding:8px 10px; font-size:12px; max-width:200px;">
+                      <b>${v.name}</b><br/>
+                      <span style="color:#666">${v.address || ""}</span>
+                    </div>`,
+        });
+        window.kakao.maps.event.addListener(marker, "click", () => iw.open(map, marker));
+      });
+
+      // 범위 맞추기
+      if (coords.length > 0) {
+        const bounds = new window.kakao.maps.LatLngBounds();
+        coords.forEach(({ pos }) => bounds.extend(pos));
+        map.setBounds(bounds);
+      }
+    })();
+  }, [showMap, venues]);
+
+  /* ----------------------------- 렌더 ----------------------------- */
   return (
     <div>
       <Header />
@@ -148,8 +194,15 @@ export default function CategoryPage() {
         </button>
       </div>
 
-      {/* 정렬 탭 자리 */}
-      <div style={{ textAlign: "center", marginBottom: "1rem" }}>베스트 공간 순 ▾</div>
+        {/* 상단 버튼들 */}
+        <div style={{ display: "flex", justifyContent: "center", gap: "0.75rem", marginBottom: 12 }}>
+          <button onClick={() => setShowFilters(true)} style={btn}>
+            <span role="img" aria-label="filter">⚙️</span>&nbsp;필터
+          </button>
+          <button onClick={() => setShowMap((v) => !v)} style={btn}>
+            <span role="img" aria-label="map">🗺</span>&nbsp;{showMap ? "지도 숨기기" : "지도 보기"}
+          </button>
+        </div>
 
       {/* 지도 (옵션) */}
       {showMap && (
@@ -190,10 +243,27 @@ export default function CategoryPage() {
       {/* 리스트 */}
       <main className="cards-grid">
         {loading && <div style={{ color: "#666" }}>불러오는 중…</div>}
-        {!loading && errMsg && <div style={{ color: "#b91c1c" }}>{errMsg}</div>}
+        {!loading && errMsg && <div style={{ color: "#b91c1c", marginBottom: 12 }}>{errMsg}</div>}
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(3, 1fr)",
+            gap: 24,
+          }}
+        >
+          {!loading && !errMsg &&
+            venues.map((v) => (
+              <div key={v.id}>
+                <VenueCard venue={v} />
+              </div>
+            ))}
+        </div>
 
         {!loading && !errMsg && venues.length === 0 && (
-          <div style={{ color: "#666" }}>표시할 공간이 없습니다.</div>
+          <div style={{ color: "#666", marginTop: 16 }}>
+            표시할 공간이 없습니다{q ? ` (검색어: "${q}")` : ""}.
+          </div>
         )}
 
         {!loading &&
@@ -205,14 +275,13 @@ export default function CategoryPage() {
           ))}
       </main>
 
-      {/* 필터 패널 */}
       {showFilters && (
         <FilterDrawer
           onClose={() => setShowFilters(false)}
           onApply={(filters) => {
             console.log("적용된 필터:", filters);
             setShowFilters(false);
-            // TODO: fetchList 파라미터에 filters 반영 (가격/지역/인원 등)
+            // TODO: fetchList 파라미터에 filters 반영
           }}
         />
       )}
@@ -222,18 +291,12 @@ export default function CategoryPage() {
   );
 }
 
-const inputStyle = {
-  padding: "0.5rem",
-  borderRadius: 6,
-  border: "1px solid #ddd",
-  width: 150,
-};
-
-const buttonStyle = {
+/* --- styles --- */
+const btn = {
   padding: "0.5rem 1rem",
   border: "1px solid #8b5cf6",
-  background: "white",
-  borderRadius: 999,
+  background: "#fff",
   color: "#8b5cf6",
+  borderRadius: 999,
   cursor: "pointer",
 };

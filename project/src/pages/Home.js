@@ -1,5 +1,6 @@
 // src/pages/Home.js
 import React, { useEffect, useState, useRef, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import Header from "../components/Header";
 import IconFilters from "../components/IconFilters";
 import VenueCard from "../components/VenueCard";
@@ -55,8 +56,8 @@ export default function Home() {
   const [gapiReady, setGapiReady] = useState(false);
   const [gcAuthed, setGcAuthed] = useState(
     () => localStorage.getItem("gc_authed") === "1"
-  );
-  const [busy, setBusy] = useState(false);
+  ); // ✅ UI/로직에서 사용
+  const [busy, setBusy] = useState(false); // ✅ 버튼 disabled에 사용
   const tokenClientRef = useRef(null);
 
   // StageEntity → VenueCard 매핑
@@ -131,11 +132,21 @@ export default function Home() {
 
   // 최초 로드
   useEffect(() => {
-    fetchVenues();
+    fetchVenues(null);
     fetchReviews();
   }, [fetchVenues, fetchReviews]);
 
-  // ====== (선택) 구글 캘린더 연동 ======
+  // 🔎 헤더 검색 → CategoryPage로 이동
+  const handleSearch = (keyword = "") => {
+    const q = (keyword || "").trim();
+    if (q) {
+      navigate(`/category?q=${encodeURIComponent(q)}`);
+    } else {
+      navigate(`/category`);
+    }
+  };
+
+  // ===== Google Calendar 스크립트 로드
   useEffect(() => {
     (async () => {
       try {
@@ -144,10 +155,12 @@ export default function Home() {
         setGapiReady(true);
       } catch (e) {
         console.error("Google scripts load failed:", e);
+        setGapiReady(false);
       }
     })();
   }, []);
 
+  // gapi client 준비
   const ensureGapiClient = async () => {
     if (!window.gapi) throw new Error("gapi not loaded");
     await new Promise((resolve) => window.gapi.load("client", resolve));
@@ -156,6 +169,7 @@ export default function Home() {
     }
   };
 
+  // GIS token client 준비
   const ensureTokenClient = () => {
     if (!window.google || !window.google.accounts?.oauth2) {
       throw new Error("Google Identity Services not loaded");
@@ -196,9 +210,9 @@ export default function Home() {
   const connectCalendar = async () => {
     try {
       setBusy(true);
-      if (!gapiReady) throw new Error("Google scripts not ready yet");
-      await ensureGapiClient();
-      const tokenClient = ensureTokenClient();
+      if (!gapiReady) throw new Error("Google scripts not ready");
+      await ensureGapiClient(); // ✅ 사용
+      const tokenClient = ensureTokenClient(); // ✅ 사용
       tokenClient.callback = (res) => {
         if (res && res.access_token) {
           setGcAuthed(true);
@@ -215,10 +229,11 @@ export default function Home() {
     }
   };
 
+  // 예시 이벤트 추가
   const addQuickEvent = async () => {
     try {
       setBusy(true);
-      await ensureGapiClient();
+      await ensureGapiClient(); // ✅ 사용
       if (!window.gapi.client.getToken()) {
         await connectCalendar();
         return;
@@ -244,10 +259,10 @@ export default function Home() {
     }
   };
 
+  // 캘린더 열기 / 연동 해제
   const openCalendar = () => {
     window.open("https://calendar.google.com/calendar/u/0/r", "_blank", "noopener,noreferrer");
   };
-
   const disconnectCalendar = async () => {
     try {
       const t = window.gapi?.client?.getToken();
@@ -263,10 +278,13 @@ export default function Home() {
     alert("구글 캘린더 연동이 해제되었습니다.");
   };
 
-  // ====== UI ======
+  // ===== UI =====
+  const fabDisabled = busy || (!gapiReady && !gcAuthed); // ✅ gapiReady가 실제로 사용됨
+
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
-      <Header />
+      {/* Header는 그대로, 검색 시 CategoryPage로 이동 */}
+      <Header onSearch={handleSearch} />
 
       <IconFilters
         onSelect={(categoryId) => {
@@ -313,18 +331,25 @@ export default function Home() {
 
       <Footer />
 
-      {/* (선택) 구글 캘린더 FAB */}
+      {/* Google Calendar FAB */}
       <div style={fabWrapStyle}>
         <button
           aria-label="Google Calendar Connect"
           onClick={gcAuthed ? openCalendar : connectCalendar}
-          disabled={busy}
+          disabled={fabDisabled}
           style={{
             ...fabStyle,
             background: gcAuthed ? "#34a853" : "#8b5cf6",
-            cursor: busy ? "default" : "pointer",
+            cursor: fabDisabled ? "default" : "pointer",
+            opacity: fabDisabled ? 0.7 : 1,
           }}
-          title={gcAuthed ? "구글 캘린더 열기" : "구글 캘린더 연동"}
+          title={
+            gcAuthed
+              ? "구글 캘린더 열기"
+              : gapiReady
+              ? "구글 캘린더 연동"
+              : "Google 스크립트 로딩 중…"
+          }
         >
           {gcAuthed ? "📅" : "+"}
         </button>
@@ -335,6 +360,7 @@ export default function Home() {
               이벤트 추가
             </button>
             <button onClick={disconnectCalendar} disabled={busy} style={miniBtnStyle} title="연동 해제">
+            <button onClick={disconnectCalendar} disabled={busy} style={miniBtnStyle} title="연동 해제">
               연동 해제
             </button>
           </div>
@@ -344,6 +370,7 @@ export default function Home() {
   );
 }
 
+/* --- styles --- */
 const fabWrapStyle = {
   position: "fixed",
   right: 20,
@@ -354,7 +381,6 @@ const fabWrapStyle = {
   gap: "0.5rem",
   zIndex: 1000,
 };
-
 const fabStyle = {
   width: 56,
   height: 56,
@@ -364,7 +390,6 @@ const fabStyle = {
   fontSize: "1.6rem",
   boxShadow: "0 8px 16px rgba(0,0,0,0.2)",
 };
-
 const miniBtnStyle = {
   border: "none",
   padding: "0.5rem 0.75rem",
@@ -374,3 +399,4 @@ const miniBtnStyle = {
   boxShadow: "0 4px 10px rgba(0,0,0,0.1)",
   cursor: "pointer",
 };
+

@@ -273,6 +273,6 @@ export default function VenueDetail() {
       </div>
 
       <Footer />
-    </>
+    </div>
   );
 }
