@@ -6,20 +6,17 @@ import IconFilters from "../components/IconFilters";
 import VenueCard from "../components/VenueCard";
 import ReviewCard from "../components/ReviewCard";
 import Footer from "../components/Footer";
-import api from "../api"; // baseURL: http://localhost:4000/api
+import api from "../api"; // baseURL: /api (프록시)
 
-// 🔑 Google OAuth 클라이언트 ID (네 값으로 교체 가능)
+// (선택) Google Calendar 연동 - 기존 유지
 const GOOGLE_CLIENT_ID =
   "913446817762-5knrr2vm42199tkma0f0beq4e1gu1r12.apps.googleusercontent.com";
-
-// Google Calendar 설정
 const GOOGLE_DISCOVERY_DOCS = [
   "https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest",
 ];
 const GOOGLE_SCOPES =
   "https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly";
 
-// 외부 스크립트 1회 로더
 function loadScriptOnce(src, id) {
   return new Promise((resolve, reject) => {
     if (id && document.getElementById(id)) return resolve();
@@ -33,89 +30,87 @@ function loadScriptOnce(src, id) {
   });
 }
 
-// public 경로 보정
-const toPublic = (p) => {
+// 백엔드 static/절대 URL 모두 대응
+const ASSET_BASE = process.env.REACT_APP_ASSET_BASE || "";
+const toImageUrl = (p) => {
   if (!p) return "";
-  if (/^https?:\/\//i.test(p)) return p;
-  return (process.env.PUBLIC_URL || "") + p;
+  const norm = String(p).replace(/\\/g, "/").trim();
+  if (/^https?:\/\//i.test(norm)) return norm;
+  if (norm.startsWith("/")) return (ASSET_BASE || "") + norm;
+  return (ASSET_BASE ? ASSET_BASE + "/" : (process.env.PUBLIC_URL || "") + "/") + norm.replace(/^\/+/, "");
 };
 
 export default function Home() {
   const navigate = useNavigate();
 
-  // ===== 장소 =====
+  // ====== 장소 목록 ======
   const [venues, setVenues] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [loading, setLoading] = useState(false);
   const [errMsg, setErrMsg] = useState("");
 
-  // ===== 후기 =====
+  // ====== 후기 목록 (DB 전용) ======
   const [reviews, setReviews] = useState([]);
   const [rLoading, setRLoading] = useState(false);
   const [rErrMsg, setRErrMsg] = useState("");
 
-  // ===== Google Calendar =====
-  const [gapiReady, setGapiReady] = useState(false); // ✅ UI에서 사용
-  const [gcAuthed, setGcAuthed] = useState(
-    () => localStorage.getItem("gc_authed") === "1"
-  ); // ✅ UI/로직에서 사용
-  const [busy, setBusy] = useState(false); // ✅ 버튼 disabled에 사용
+  // ====== (선택) 구글 캘린더 ======
+  const [gapiReady, setGapiReady] = useState(false);
+  const [gcAuthed, setGcAuthed] = useState(() => localStorage.getItem("gc_authed") === "1");
+  const [busy, setBusy] = useState(false);
   const tokenClientRef = useRef(null);
 
-  // API -> 카드 형태
+  // StageEntity → VenueCard 매핑
   const toCardShape = (r = {}) => ({
     id: r.stageId,
     name: r.stageName,
-    image: r.stagePicture || "",
+    image: toImageUrl(r.stagePicture || ""),
     address: r.location || "",
     price: r.price ?? 0,
   });
 
-  // 장소 조회 (초기/카테고리 변경시)
-  const fetchVenues = useCallback(
-    async (categoryId = null) => {
-      setLoading(true);
-      setErrMsg("");
-      try {
-        const params = { page: 0, size: 10 };
-        if (categoryId != null) params.categoryId = categoryId;
+  // 장소 목록
+  const fetchVenues = useCallback(async (categoryId = null) => {
+    setLoading(true);
+    setErrMsg("");
+    try {
+      const params = { page: 0, size: 10 };
+      if (categoryId != null) params.categoryId = categoryId;
 
-        const res = await api.get("/stages", { params });
-        const page = res?.data?.data;
-        const list = Array.isArray(page?.content) ? page.content : [];
-        setVenues(list.map(toCardShape));
-      } catch (e) {
-        console.error(
-          "[GET] /stages 실패:",
-          e?.response?.status,
-          e?.response?.data || e.message
-        );
-        setVenues([]);
-        setErrMsg("공간 목록을 불러오지 못했습니다.");
-      } finally {
-        setLoading(false);
-      }
-    },
-    []
-  );
+      const res = await api.get("/stages", { params });
+      const page = res?.data?.data ?? res?.data;
+      const list = Array.isArray(page?.content) ? page.content : [];
+      setVenues(list.map(toCardShape));
+    } catch (e) {
+      console.error("[GET] /stages 실패:", e?.response?.status, e?.response?.data || e.message);
+      setVenues([]);
+      setErrMsg("공간 목록을 불러오지 못했습니다.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  // 후기
+  // 후기 목록: DB에서만 가져옴
   const fetchReviews = useCallback(async () => {
     setRLoading(true);
     setRErrMsg("");
     try {
-      const res = await fetch("/mock/reviews.json", { cache: "no-store" });
-      if (!res.ok) throw new Error(res.statusText);
-      const data = await res.json();
-      const safe = (Array.isArray(data) ? data : []).map((r) => ({
-        ...r,
-        image: toPublic(r.image),
+      const res = await api.get("/reviews", { params: { page: 0, size: 4, sort: "reviewId,desc" } });
+      const payload = res?.data;
+      const pageLike = (payload && payload.success !== undefined ? payload.data : payload) || {};
+      const rows = Array.isArray(pageLike?.content) ? pageLike.content : Array.isArray(pageLike) ? pageLike : [];
+      const mapped = rows.map((r) => ({
+        id: r.reviewId ?? r.id,
+        image: toImageUrl(r.reviewPicture || r.review_picture || r.image || ""),
+        title: r.title || (r.rating != null ? `★ ${r.rating}` : "후기"),
+        description: r.content || r.description || "",
+        tags: [],
       }));
-      setReviews(safe);
+      setReviews(mapped);
     } catch (e) {
-      console.error("[GET] /mock/reviews.json 실패:", e.message);
-      setReviews([]);
+      console.warn("[GET] /api/reviews 실패:", e?.response?.status, e?.message);
       setRErrMsg("후기를 불러오지 못했습니다.");
+      setReviews([]);
     } finally {
       setRLoading(false);
     }
@@ -130,11 +125,8 @@ export default function Home() {
   // 🔎 헤더 검색 → CategoryPage로 이동
   const handleSearch = (keyword = "") => {
     const q = (keyword || "").trim();
-    if (q) {
-      navigate(`/category?q=${encodeURIComponent(q)}`);
-    } else {
-      navigate(`/category`);
-    }
+    if (q) navigate(`/category?q=${encodeURIComponent(q)}`);
+    else navigate(`/category`);
   };
 
   // ===== Google Calendar 스크립트 로드
@@ -142,11 +134,8 @@ export default function Home() {
     (async () => {
       try {
         await loadScriptOnce("https://apis.google.com/js/api.js", "google-api");
-        await loadScriptOnce(
-          "https://accounts.google.com/gsi/client",
-          "google-identity"
-        );
-        setGapiReady(true); // ✅ 읽히므로 경고 없음
+        await loadScriptOnce("https://accounts.google.com/gsi/client", "google-identity");
+        setGapiReady(true);
       } catch (e) {
         console.error("Google scripts load failed:", e);
         setGapiReady(false);
@@ -154,7 +143,6 @@ export default function Home() {
     })();
   }, []);
 
-  // gapi client 준비
   const ensureGapiClient = async () => {
     if (!window.gapi) throw new Error("gapi not loaded");
     await new Promise((resolve) => window.gapi.load("client", resolve));
@@ -163,7 +151,6 @@ export default function Home() {
     }
   };
 
-  // GIS token client 준비
   const ensureTokenClient = () => {
     if (!window.google || !window.google.accounts?.oauth2) {
       throw new Error("Google Identity Services not loaded");
@@ -178,13 +165,35 @@ export default function Home() {
     return tokenClientRef.current;
   };
 
-  // 캘린더 연결
+  useEffect(() => {
+    (async () => {
+      if (!gapiReady || !gcAuthed) return;
+      try {
+        await ensureGapiClient();
+        const tokenClient = ensureTokenClient();
+        tokenClient.callback = (res) => {
+          if (res && res.access_token) {
+            setGcAuthed(true);
+            localStorage.setItem("gc_authed", "1");
+          } else {
+            setGcAuthed(false);
+            localStorage.removeItem("gc_authed");
+          }
+        };
+        tokenClient.requestAccessToken({ prompt: "" });
+      } catch (e) {
+        console.warn("Silent token refresh failed:", e);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gapiReady]);
+
   const connectCalendar = async () => {
     try {
       setBusy(true);
       if (!gapiReady) throw new Error("Google scripts not ready");
-      await ensureGapiClient(); // ✅ 사용
-      const tokenClient = ensureTokenClient(); // ✅ 사용
+      await ensureGapiClient();
+      const tokenClient = ensureTokenClient();
       tokenClient.callback = (res) => {
         if (res && res.access_token) {
           setGcAuthed(true);
@@ -201,11 +210,10 @@ export default function Home() {
     }
   };
 
-  // 예시 이벤트 추가
   const addQuickEvent = async () => {
     try {
       setBusy(true);
-      await ensureGapiClient(); // ✅ 사용
+      await ensureGapiClient();
       if (!window.gapi.client.getToken()) {
         await connectCalendar();
         return;
@@ -231,13 +239,8 @@ export default function Home() {
     }
   };
 
-  // 캘린더 열기 / 연동 해제
   const openCalendar = () => {
-    window.open(
-      "https://calendar.google.com/calendar/u/0/r",
-      "_blank",
-      "noopener,noreferrer"
-    );
+    window.open("https://calendar.google.com/calendar/u/0/r", "_blank", "noopener,noreferrer");
   };
   const disconnectCalendar = async () => {
     try {
@@ -254,12 +257,10 @@ export default function Home() {
     alert("구글 캘린더 연동이 해제되었습니다.");
   };
 
-  // ===== UI =====
-  const fabDisabled = busy || (!gapiReady && !gcAuthed); // ✅ gapiReady가 실제로 사용됨
+  const fabDisabled = busy || (!gapiReady && !gcAuthed);
 
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
-      {/* Header는 그대로, 검색 시 CategoryPage로 이동 */}
       <Header onSearch={handleSearch} />
 
       <IconFilters
@@ -283,9 +284,7 @@ export default function Home() {
             {venues.map((v) => (
               <VenueCard key={v.id} venue={v} />
             ))}
-            {venues.length === 0 && (
-              <div style={{ color: "#666" }}>표시할 공간이 없습니다.</div>
-            )}
+            {venues.length === 0 && <div style={{ color: "#666" }}>표시할 공간이 없습니다.</div>}
           </div>
         )}
       </section>
@@ -299,12 +298,10 @@ export default function Home() {
 
         {!rLoading && !rErrMsg && (
           <div style={{ display: "flex", gap: "1rem", overflowX: "auto" }}>
-            {reviews.map((rv) => (
-              <ReviewCard key={rv.id} review={rv} />
+            {reviews.map((rv, i) => (
+              <ReviewCard key={rv.id ?? i} review={rv} />
             ))}
-            {reviews.length === 0 && (
-              <div style={{ color: "#666" }}>표시할 후기가 없습니다.</div>
-            )}
+            {reviews.length === 0 && <div style={{ color: "#666" }}>표시할 후기가 없습니다.</div>}
           </div>
         )}
       </section>
@@ -337,8 +334,9 @@ export default function Home() {
         {gcAuthed && (
           <div style={{ display: "flex", gap: "0.5rem" }}>
             <button onClick={addQuickEvent} disabled={busy} style={miniBtnStyle} title="예시 이벤트 추가">
-              {busy ? "처리 중…" : "이벤트 추가"}
+              이벤트 추가
             </button>
+            {/* 🔧 중복으로 열려 있던 <button> 한 줄 제거 */}
             <button onClick={disconnectCalendar} disabled={busy} style={miniBtnStyle} title="연동 해제">
               연동 해제
             </button>

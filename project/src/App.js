@@ -1,30 +1,35 @@
 // src/App.js
 import React from "react";
-import { Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+
 import Home from "./pages/Home";
+import CategoryPage from "./pages/CategoryPage";
+import VenueDetail from "./pages/VenueDetail";
 import Login from "./pages/Login";
 import SignUp from "./pages/SignUp";
 import ForgotPassword from "./pages/ForgotPassword";
-import VenueDetail from "./pages/VenueDetail";
-import CategoryPage from "./pages/CategoryPage";
 import KakaoCallback from "./pages/KakaoCallback";
 import NaverCallback from "./pages/NaverCallback";
+import ArtistList from "./pages/ArtistList";
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/" element={<Home />} />
-      <Route path="/login" element={<Login />} />
-      <Route path="/signup" element={<SignUp />} />
-      <Route path="/forgot-password" element={<ForgotPassword />} />
-      <Route path="/venue/:id" element={<VenueDetail />} />
-      {/* ✅ 카테고리는 숫자 ID 파라미터로 */}
-      <Route path="/category/:categoryId" element={<CategoryPage />} />
-      <Route path="/auth/kakao/callback" element={<KakaoCallback />} />
-      <Route path="/auth/naver/callback" element={<NaverCallback />} />
-      <Route path="/category" element={<CategoryPage />} />
-      <Route path="/category/:categoryId" element={<CategoryPage />} />
-    </Routes>
+    <BrowserRouter>
+      <Routes>
+        {/* 공개 라우트 */}
+        <Route path="/" element={<Home />} />
+        <Route path="/artists" element={<ArtistList />} /> {/* 햄버거 → 여기로 이동 */}
+        <Route path="/category" element={<CategoryPage />} />
+        <Route path="/category/:slug" element={<CategoryPage />} />
+        <Route path="/venue/:id" element={<VenueDetail />} />
+
+        {/* 로그인/회원가입/OAuth 콜백 */}
+        <Route path="/login" element={<Login />} />
+        <Route path="/signup" element={<SignUp />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/auth/kakao" element={<KakaoCallback />} />
+        <Route path="/auth/naver" element={<NaverCallback />} />
+      </Routes>
+    </BrowserRouter>
   );
 }
-

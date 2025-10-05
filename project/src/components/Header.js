@@ -24,7 +24,11 @@ function Header() {
       borderBottom: "1px solid #eee",
       position: "relative"
     }}>
-      <div style={{ fontSize: "1.5rem", fontWeight: "bold", cursor: "pointer", flex: "1" }}>
+      {/* ✅ onClick 한 줄만 추가 */}
+      <div
+        onClick={() => navigate("/artists")}
+        style={{ fontSize: "1.5rem", fontWeight: "bold", cursor: "pointer", flex: "1" }}
+      >
         ☰
       </div>
 
