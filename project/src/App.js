@@ -18,12 +18,12 @@ export default function App() {
       <Routes>
         {/* 공개 라우트 */}
         <Route path="/" element={<Home />} />
-        <Route path="/artists" element={<ArtistList />} /> {/* 햄버거 → 여기로 이동 */}
+        <Route path="/artists" element={<ArtistList />} />
         <Route path="/category" element={<CategoryPage />} />
         <Route path="/category/:slug" element={<CategoryPage />} />
         <Route path="/venue/:id" element={<VenueDetail />} />
 
-        {/* 로그인/회원가입/OAuth 콜백 */}
+        {/* 계정/콜백 */}
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<SignUp />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
