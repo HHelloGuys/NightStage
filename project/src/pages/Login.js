@@ -1,30 +1,35 @@
 // src/pages/Login.js
-import React from "react";
+import React, { useState, useContext } from "react";
 import Header from "../components/Header";
 import Footer from "../components/Footer";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { AuthContext } from "../context/AuthContext";
 
 function Login() {
+  const { login } = useContext(AuthContext);
+  const navigate = useNavigate();
+  
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
   const KAKAO_CLIENT_ID = process.env.REACT_APP_KAKAO_CLIENT_ID;
   const NAVER_CLIENT_ID = process.env.REACT_APP_NAVER_CLIENT_ID;
   const KAKAO_REDIRECT_URI = process.env.REACT_APP_KAKAO_REDIRECT_URI;
   const NAVER_REDIRECT_URI = process.env.REACT_APP_NAVER_REDIRECT_URI;
 
   const onClickKakao = () => {
-    // OAuth 2.0 Authorization Code (KaKao)
     const params = new URLSearchParams({
       client_id: KAKAO_CLIENT_ID,
       redirect_uri: KAKAO_REDIRECT_URI,
       response_type: "code",
-      // scope는 필요 시 추가 (예: "profile_nickname account_email")
-      // scope: "profile_nickname account_email",
     });
     window.location.assign(`https://kauth.kakao.com/oauth/authorize?${params.toString()}`);
   };
 
   const onClickNaver = () => {
-    // OAuth 2.0 Authorization Code (Naver)
-    // state는 CSRF 방지용 랜덤 문자열 (여기서는 간단히 time 사용)
     const state = `${Date.now()}_naver`;
     sessionStorage.setItem("naver_oauth_state", state);
 
@@ -35,6 +40,31 @@ function Login() {
       state,
     });
     window.location.assign(`https://nid.naver.com/oauth2.0/authorize?${params.toString()}`);
+  };
+
+  const handleEmailLogin = async (e) => {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+
+    try {
+      if (!email || !password) {
+        throw new Error("이메일과 비밀번호를 입력해주세요.");
+      }
+
+      await login(email, password);
+      
+      if (rememberMe) {
+        // 브라우저 저장 기능은 선택사항
+        sessionStorage.setItem("ns_email", email);
+      }
+
+      navigate("/");
+    } catch (err) {
+      setError(err.message || "로그인에 실패했습니다.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -72,27 +102,62 @@ function Login() {
 
           <div style={{ margin: "1.5rem 0", color: "#888" }}>또는</div>
 
-          <input type="email" placeholder="이메일" style={inputStyle} />
-          <input type="password" placeholder="비밀번호" style={inputStyle} />
+          <form onSubmit={handleEmailLogin}>
+            <input 
+              type="email" 
+              placeholder="이메일" 
+              style={inputStyle}
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              disabled={loading}
+            />
+            <input 
+              type="password" 
+              placeholder="비밀번호" 
+              style={inputStyle}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              disabled={loading}
+            />
 
-          <div style={{
-            display: "flex", justifyContent: "space-between",
-            fontSize: "0.8rem", marginBottom: "1rem"
-          }}>
-            <label>
-              <input type="checkbox" /> 로그인 기억하기
-            </label>
-            <Link to="/forgot-password" style={{ color: "#666", fontSize: "0.85rem" }}>
-              비밀번호 찾기
-            </Link>
-          </div>
+            {error && (
+              <div style={{ color: "red", fontSize: "0.85rem", marginBottom: "0.8rem" }}>
+                {error}
+              </div>
+            )}
 
-          <button style={{
-            backgroundColor: "#facc15", border: "none", padding: "0.7rem",
-            borderRadius: "4px", width: "100%", fontWeight: "bold"
-          }}>
-            이메일로 로그인
-          </button>
+            <div style={{
+              display: "flex", justifyContent: "space-between",
+              fontSize: "0.8rem", marginBottom: "1rem"
+            }}>
+              <label>
+                <input 
+                  type="checkbox" 
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                /> 로그인 기억하기
+              </label>
+              <Link to="/forgot-password" style={{ color: "#666", fontSize: "0.85rem" }}>
+                비밀번호 찾기
+              </Link>
+            </div>
+
+            <button 
+              type="submit"
+              style={{
+                backgroundColor: loading ? "#ccc" : "#facc15", 
+                border: "none", 
+                padding: "0.7rem",
+                borderRadius: "4px", 
+                width: "100%", 
+                fontWeight: "bold",
+                cursor: loading ? "not-allowed" : "pointer"
+              }}
+              disabled={loading}
+            >
+              {loading ? "로그인 중..." : "이메일로 로그인"}
+            </button>
+          </form>
 
           <div style={{ fontSize: "0.85rem", marginTop: "1rem", color: "#666" }}>
             아직 NightStage 회원이 아니신가요?{" "}

@@ -1,7 +1,10 @@
 // src/api.js
 import axios from "axios";
 
-// 개발 환경: 백엔드(local:4000)로 직통
-const api = axios.create({ baseURL: "http://localhost:4000/api" });
+// 백엔드는 4000 포트
+const api = axios.create({ 
+  baseURL: "http://localhost:4000/api",
+  withCredentials: true // ★ 쿠키/세션 자동 포함 (필수!)
+});
 
 export default api;

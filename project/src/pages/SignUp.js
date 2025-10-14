@@ -1,22 +1,52 @@
 // src/pages/SignUp.js
-import React, { useState } from "react";
+import React, { useState, useContext } from "react";
+import { useNavigate } from "react-router-dom";
 import Header from "../components/Header";
 import Footer from "../components/Footer";
+import { AuthContext } from "../context/AuthContext";
 
 function SignUp() {
+  const { register } = useContext(AuthContext);
+  const navigate = useNavigate();
+
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [phone, setPhone] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (password !== confirm) {
-      alert("비밀번호가 일치하지 않습니다.");
+    setError("");
+
+    if (!name || !email || !password || !confirm || !phone) {
+      setError("모든 필드를 입력해주세요.");
       return;
     }
 
-    console.log("회원가입 정보:", { email, password });
-    // 여기에 회원가입 API 호출 추가 가능
+    if (password !== confirm) {
+      setError("비밀번호가 일치하지 않습니다.");
+      return;
+    }
+
+    if (password.length < 6) {
+      setError("비밀번호는 6자 이상이어야 합니다.");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      await register(name, email, password, phone);
+      alert("회원가입이 완료되었습니다. 로그인해주세요.");
+      navigate("/login");
+    } catch (err) {
+      setError(err.message || "회원가입에 실패했습니다.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -34,12 +64,30 @@ function SignUp() {
         <h2 style={{ textAlign: "center", marginBottom: "1.5rem" }}>회원가입</h2>
         <form onSubmit={handleSubmit}>
           <input
+            type="text"
+            placeholder="이름"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+            style={inputStyle}
+            disabled={loading}
+          />
+          <input
             type="email"
             placeholder="이메일"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
             style={inputStyle}
+            disabled={loading}
+          />
+          <input
+            type="tel"
+            placeholder="전화번호 (선택사항)"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            style={inputStyle}
+            disabled={loading}
           />
           <input
             type="password"
@@ -48,6 +96,7 @@ function SignUp() {
             onChange={(e) => setPassword(e.target.value)}
             required
             style={inputStyle}
+            disabled={loading}
           />
           <input
             type="password"
@@ -56,9 +105,30 @@ function SignUp() {
             onChange={(e) => setConfirm(e.target.value)}
             required
             style={inputStyle}
+            disabled={loading}
           />
-          <button type="submit" style={buttonStyle}>
-            회원가입 완료
+
+          {error && (
+            <div style={{ 
+              color: "red", 
+              fontSize: "0.85rem", 
+              marginBottom: "1rem",
+              textAlign: "center"
+            }}>
+              {error}
+            </div>
+          )}
+
+          <button 
+            type="submit" 
+            style={{
+              ...buttonStyle,
+              backgroundColor: loading ? "#999" : "#4B3EFF",
+              cursor: loading ? "not-allowed" : "pointer"
+            }}
+            disabled={loading}
+          >
+            {loading ? "가입 중..." : "회원가입 완료"}
           </button>
         </form>
       </div>
@@ -79,7 +149,6 @@ const inputStyle = {
 const buttonStyle = {
   width: "100%",
   padding: "0.75rem",
-  backgroundColor: "#4B3EFF",
   color: "white",
   border: "none",
   borderRadius: "4px",
