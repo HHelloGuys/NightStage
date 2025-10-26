@@ -255,7 +255,7 @@ export default function Home() {
     localStorage.removeItem("gc_authed");
     setGcAuthed(false);
     alert("구글 캘린더 연동이 해제되었습니다.");
-  };
+  };  
 
   const fabDisabled = busy || (!gapiReady && !gcAuthed);
 

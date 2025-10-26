@@ -3,6 +3,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import Header from "../components/Header";
 import Footer from "../components/Footer";
+import PaymentModal from "../components/PaymentModal";
 import axios from "axios";
 
 // 백엔드 정적 파일 호스트 (이미지 경로 보정용)
@@ -21,7 +22,7 @@ const toImageUrl = (p) => {
 export default function VenueDetail() {
   const { id } = useParams();
 
-  // 상세/에러
+  // 공간 상세
   const [venue, setVenue] = useState(null);
   const [errMsg, setErrMsg] = useState("");
 
@@ -35,8 +36,13 @@ export default function VenueDetail() {
 
   // 예약 폼
   const [date, setDate] = useState("");
-  const [time, setTime] = useState("");
+  const [startTime, setStartTime] = useState("");
+  const [endTime, setEndTime] = useState("");
   const [people, setPeople] = useState(1);
+
+  // 결제 모달
+  const [payOpen, setPayOpen] = useState(false);
+  const [payItem, setPayItem] = useState(null);
 
   // 상세 불러오기
   useEffect(() => {
@@ -78,13 +84,14 @@ export default function VenueDetail() {
     }
   }, [id]);
 
+  // 후기 탭 들어왔을 때만 호출 (id 바뀌어도 다시 호출)
   useEffect(() => {
     if (activeTab === "후기") fetchReviews();
   }, [activeTab, fetchReviews]);
 
   // 지도
   const hasCoords =
-    venue && Number.isFinite(venue.lat) && Number.isFinite(venue.lng);
+    venue && Number.isFinite(Number(venue.lat)) && Number.isFinite(Number(venue.lng));
 
   const loadMap = useCallback(() => {
     if (!hasCoords) return;
@@ -92,7 +99,7 @@ export default function VenueDetail() {
       const el = document.getElementById("map");
       if (!el) return;
       new window.kakao.maps.Map(el, {
-        center: new window.kakao.maps.LatLng(venue.lat, venue.lng),
+        center: new window.kakao.maps.LatLng(Number(venue.lat), Number(venue.lng)),
         level: 3,
       });
     }
@@ -104,11 +111,10 @@ export default function VenueDetail() {
     }
   }, [activeTab, hasCoords, loadMap]);
 
-  // 조기 반환은 훅들 아래에서만
   if (errMsg) return <div style={{ padding: "2rem", color: "#b91c1c" }}>{errMsg}</div>;
   if (!venue) return <div style={{ padding: "2rem" }}>로딩 중...</div>;
 
-  // 파생 값(훅 아님 → 자유롭게 조건부 계산 가능)
+  // StageEntity 매핑
   const stageName = venue.stageName || "공연장";
   const imageSrc = toImageUrl(venue.stagePicture);
   const introduction = venue.stageIntroduction || "";
@@ -117,21 +123,37 @@ export default function VenueDetail() {
   const refund = venue.refundPolicy || "";
   const location = venue.location || "";
   const capacity = venue.capacity;
-  const price = venue.price;
+  const price = Number(venue.price ?? 0);
   const rating = venue.stageRating;
   const openHours = venue.openHours || "";
   const contact = venue.contactInfo || "";
 
-  const handleReserve = () => {
-    if (!date || !time || !people) {
-      alert("날짜, 시간, 인원을 선택해 주세요.");
+  // 간단한 금액 계산 (시간 차 * 시간당 금액 가정)
+  const timeDiffHours = (() => {
+    if (!startTime || !endTime) return 0;
+    const [sH, sM] = startTime.split(":").map(Number);
+    const [eH, eM] = endTime.split(":").map(Number);
+    const start = sH * 60 + sM;
+    const end = eH * 60 + eM;
+    const diff = Math.max(0, end - start);
+    return Math.ceil(diff / 60);
+  })();
+  const estimatedTotal = price > 0 ? price * Math.max(1, timeDiffHours) : 0;
+
+  const onClickReserve = () => {
+    if (!date || !startTime || !endTime) {
+      alert("날짜와 시간을 선택해주세요.");
       return;
     }
-    alert(
-      `예약 요청 (데모)\n날짜: ${date}\n시간: ${time}\n인원: ${people}명${
-        price != null ? `\n예상금액(시간당): ₩${Number(price).toLocaleString()}` : ""
-      }`
-    );
+    setPayItem({
+      stageId: venue.stageId || id,
+      name: stageName,
+      // 실제 결제 금액: 예시로 계산값 사용
+      price: estimatedTotal,
+      image: imageSrc,
+      meta: { date, startTime, endTime, people: Number(people) },
+    });
+    setPayOpen(true);
   };
 
   return (
@@ -158,7 +180,7 @@ export default function VenueDetail() {
             <p style={{ color: "#666", marginTop: 4 }}>
               {location}
               {capacity != null ? ` · ${capacity}석` : ""}
-              {price != null ? ` · ₩${Number(price).toLocaleString()}` : ""}
+              {price != null ? ` · ₩${Number(price).toLocaleString()}/시간` : ""}
               {rating != null ? ` · ★ ${rating}` : ""}
             </p>
             {openHours && <p style={{ color: "#666" }}>⏰ {openHours}</p>}
@@ -185,9 +207,7 @@ export default function VenueDetail() {
             {/* 탭 콘텐츠 */}
             <div style={{ padding: "1.5rem 0" }}>
               {activeTab === "공간소개" && (
-                <div style={{ whiteSpace: "pre-wrap" }}>
-                  {introduction || "소개 정보가 없습니다."}
-                </div>
+                <div style={{ whiteSpace: "pre-wrap" }}>{introduction || "소개 정보가 없습니다."}</div>
               )}
 
               {activeTab === "시설안내" && (
@@ -204,15 +224,11 @@ export default function VenueDetail() {
               )}
 
               {activeTab === "이용규칙" && (
-                <div style={{ whiteSpace: "pre-wrap" }}>
-                  {rules || "이용 규칙 정보가 없습니다."}
-                </div>
+                <div style={{ whiteSpace: "pre-wrap" }}>{rules || "이용 규칙 정보가 없습니다."}</div>
               )}
 
               {activeTab === "환불정책" && (
-                <div style={{ whiteSpace: "pre-wrap" }}>
-                  {refund || "환불 정책 정보가 없습니다."}
-                </div>
+                <div style={{ whiteSpace: "pre-wrap" }}>{refund || "환불 정책 정보가 없습니다."}</div>
               )}
 
               {activeTab === "Q&A" && <div>Q&A 콘텐츠는 준비 중입니다.</div>}
@@ -261,9 +277,7 @@ export default function VenueDetail() {
                             <div style={{ fontWeight: 700, marginBottom: 6 }}>
                               {Number.isFinite(rv.rating) ? `★ ${rv.rating}/5` : "리뷰"}
                             </div>
-                            <div style={{ color: "#444", whiteSpace: "pre-wrap" }}>
-                              {rv.content}
-                            </div>
+                            <div style={{ color: "#444", whiteSpace: "pre-wrap" }}>{rv.content}</div>
                           </div>
                         </div>
                       ))}
@@ -281,8 +295,12 @@ export default function VenueDetail() {
               border: "1px solid #ccc",
               borderRadius: 8,
               padding: "1rem",
-              maxHeight: 520,
-              minWidth: 280,
+              maxHeight: 620,
+              minWidth: 300,
+              position: "sticky",
+              top: 16,
+              alignSelf: "flex-start",
+              background: "#fff",
             }}
           >
             <strong
@@ -290,12 +308,13 @@ export default function VenueDetail() {
                 borderBottom: "2px solid #8b5cf6",
                 display: "inline-block",
                 paddingBottom: "0.5rem",
+                marginBottom: "1rem",
               }}
             >
               🎟️ 예약하기
             </strong>
 
-            <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
+            <div style={{ display: "grid", gap: 12 }}>
               <label style={labelStyle}>
                 <span>날짜</span>
                 <input
@@ -306,68 +325,87 @@ export default function VenueDetail() {
                 />
               </label>
 
-              <label style={labelStyle}>
-                <span>시간</span>
-                <input
-                  type="time"
-                  value={time}
-                  onChange={(e) => setTime(e.target.value)}
-                  style={inputStyle}
-                />
-              </label>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <label style={labelStyle}>
+                  <span>시작</span>
+                  <input
+                    type="time"
+                    value={startTime}
+                    onChange={(e) => setStartTime(e.target.value)}
+                    style={inputStyle}
+                  />
+                </label>
+                <label style={labelStyle}>
+                  <span>종료</span>
+                  <input
+                    type="time"
+                    value={endTime}
+                    onChange={(e) => setEndTime(e.target.value)}
+                    style={inputStyle}
+                  />
+                </label>
+              </div>
 
               <label style={labelStyle}>
                 <span>인원</span>
                 <input
                   type="number"
                   min={1}
-                  max={999}
                   value={people}
-                  onChange={(e) =>
-                    setPeople(Math.max(1, Number(e.target.value) || 1))
-                  }
+                  onChange={(e) => setPeople(e.target.value)}
                   style={inputStyle}
                 />
               </label>
 
-              {price != null && (
-                <div style={{ color: "#111", fontWeight: 700 }}>
-                  시간당: ₩{Number(price).toLocaleString()}
-                </div>
-              )}
+              <div style={{ marginTop: 4, color: "#555", fontSize: 14 }}>
+                시간당 금액: {price > 0 ? `₩${price.toLocaleString()}` : "문의"}
+                {timeDiffHours > 0 && price > 0 ? (
+                  <div style={{ marginTop: 4, fontWeight: 600 }}>
+                    예상 결제금액: ₩{estimatedTotal.toLocaleString()}
+                  </div>
+                ) : null}
+              </div>
 
-              <button onClick={handleReserve} style={reserveBtnStyle}>
-                예약 요청
+              <button
+                onClick={onClickReserve}
+                style={{
+                  marginTop: 8,
+                  padding: "0.75rem 1rem",
+                  borderRadius: 8,
+                  border: "1px solid #8b5cf6",
+                  background: "#8b5cf6",
+                  color: "#fff",
+                  cursor: "pointer",
+                  fontSize: 16,
+                }}
+              >
+                예약하기
               </button>
             </div>
           </div>
         </div>
       </div>
 
+      {/* 결제 모달 (페이지 위 오버레이) */}
+      <PaymentModal open={payOpen} item={payItem} onClose={() => setPayOpen(false)} />
+
       <Footer />
     </div>
   );
 }
 
+/* ----- styles ----- */
+const inputStyle = {
+  width: "100%",
+  padding: "0.55rem 0.75rem",
+  border: "1px solid #ddd",
+  borderRadius: 8,
+  outline: "none",
+};
+
 const labelStyle = {
   display: "grid",
   gap: 6,
   fontSize: 14,
-  color: "#374151",
-};
-const inputStyle = {
-  padding: "0.5rem 0.75rem",
-  border: "1px solid #ddd",
-  borderRadius: 8,
-  fontSize: 14,
-};
-const reserveBtnStyle = {
-  marginTop: 8,
-  padding: "0.6rem 0.9rem",
-  borderRadius: 8,
-  border: "1px solid #8b5cf6",
-  background: "#8b5cf6",
-  color: "#fff",
-  cursor: "pointer",
-  fontWeight: 700,
+  color: "#333",
 };
