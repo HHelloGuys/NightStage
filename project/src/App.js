@@ -13,6 +13,8 @@ import KakaoCallback from "./pages/KakaoCallback";
 import NaverCallback from "./pages/NaverCallback";
 import ArtistList from "./pages/ArtistList";
 
+import KakaoPayApprove from "./pages/KakaoPayApprove"; // ✅ 추가
+
 export default function App() {
   return (
     <AuthProvider>
@@ -25,7 +27,12 @@ export default function App() {
           <Route path="/category/:slug" element={<CategoryPage />} />
           <Route path="/venue/:id" element={<VenueDetail />} />
 
-          {/* 계정/콜백 */}
+          {/* 결제 결과 라우트 (신규) */}
+          <Route path="/pay/kakao/approve" element={<KakaoPayApprove />} />
+          <Route path="/pay/kakao/cancel" element={<div style={{ padding: 24 }}>결제가 취소되었습니다.</div>} />
+          <Route path="/pay/kakao/fail" element={<div style={{ padding: 24 }}>결제에 실패했습니다.</div>} />
+
+          {/* 계정/콜백 (그대로 유지) */}
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<SignUp />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
