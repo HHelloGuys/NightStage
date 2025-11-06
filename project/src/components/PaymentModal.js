@@ -20,9 +20,7 @@ export default function PaymentModal({ open, onClose, item }) {
         quantity: 1,
         totalAmount: item?.totalPrice ?? 1000,
         // ✅ .env 파일에서 설정한 redirect URL
-        approvalUrl: process.env.REACT_APP_KAKAO_PAY_APPROVAL_URL,
-        cancelUrl: process.env.REACT_APP_KAKAO_PAY_CANCEL_URL,
-        failUrl: process.env.REACT_APP_KAKAO_PAY_FAIL_URL,
+        
       };
 
       console.log("📦 결제 요청 payload:", payload);
