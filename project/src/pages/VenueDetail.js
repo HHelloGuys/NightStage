@@ -1,4 +1,3 @@
-// src/pages/VenueDetail.js
 import React, { useEffect, useState, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import Header from "../components/Header";
@@ -22,11 +21,11 @@ const toImageUrl = (p) => {
 export default function VenueDetail() {
   const { id } = useParams();
 
-  // 공간 상세
+  // 공연장 상세
   const [venue, setVenue] = useState(null);
   const [errMsg, setErrMsg] = useState("");
 
-  // 탭
+  // 탭 상태
   const [activeTab, setActiveTab] = useState("공간소개");
 
   // 후기
@@ -34,7 +33,7 @@ export default function VenueDetail() {
   const [rLoading, setRLoading] = useState(false);
   const [rErr, setRErr] = useState("");
 
-  // 예약 폼
+  // 예약 입력
   const [date, setDate] = useState("");
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
@@ -44,7 +43,7 @@ export default function VenueDetail() {
   const [payOpen, setPayOpen] = useState(false);
   const [payItem, setPayItem] = useState(null);
 
-  // 상세 불러오기
+  // 공연장 상세 정보 불러오기
   useEffect(() => {
     if (!id) return;
     setErrMsg("");
@@ -84,12 +83,12 @@ export default function VenueDetail() {
     }
   }, [id]);
 
-  // 후기 탭 들어왔을 때만 호출 (id 바뀌어도 다시 호출)
+  // 후기 탭 전환 시만 호출
   useEffect(() => {
     if (activeTab === "후기") fetchReviews();
   }, [activeTab, fetchReviews]);
 
-  // 지도
+  // 지도 관련
   const hasCoords =
     venue && Number.isFinite(Number(venue.lat)) && Number.isFinite(Number(venue.lng));
 
@@ -128,30 +127,43 @@ export default function VenueDetail() {
   const openHours = venue.openHours || "";
   const contact = venue.contactInfo || "";
 
-  // 간단한 금액 계산 (시간 차 * 시간당 금액 가정)
+  // 시간 차이 계산 (시작-종료 유효성 포함)
   const timeDiffHours = (() => {
     if (!startTime || !endTime) return 0;
     const [sH, sM] = startTime.split(":").map(Number);
     const [eH, eM] = endTime.split(":").map(Number);
     const start = sH * 60 + sM;
     const end = eH * 60 + eM;
-    const diff = Math.max(0, end - start);
+    const diff = end - start;
+    if (diff <= 0) return 0;
     return Math.ceil(diff / 60);
   })();
+
   const estimatedTotal = price > 0 ? price * Math.max(1, timeDiffHours) : 0;
 
+  // 예약 버튼 클릭 시
   const onClickReserve = () => {
     if (!date || !startTime || !endTime) {
       alert("날짜와 시간을 선택해주세요.");
       return;
     }
+    if (timeDiffHours <= 0) {
+      alert("종료 시간이 시작 시간보다 이릅니다.");
+      return;
+    }
+
     setPayItem({
       stageId: venue.stageId || id,
-      name: stageName,
-      // 실제 결제 금액: 예시로 계산값 사용
-      price: estimatedTotal,
+      stageName,
+      totalPrice: estimatedTotal,
+      unitPrice: price,
       image: imageSrc,
-      meta: { date, startTime, endTime, people: Number(people) },
+      reservation: {
+        date,
+        startTime,
+        endTime,
+        people: Number(people),
+      },
     });
     setPayOpen(true);
   };
@@ -162,7 +174,7 @@ export default function VenueDetail() {
 
       <div style={{ padding: "2rem", maxWidth: "1200px", margin: "0 auto" }}>
         <div style={{ display: "flex", gap: "2rem" }}>
-          {/* 좌측: 상세/탭 */}
+          {/* 좌측: 상세 */}
           <div style={{ flex: 2 }}>
             <img
               src={imageSrc}
@@ -207,9 +219,10 @@ export default function VenueDetail() {
             {/* 탭 콘텐츠 */}
             <div style={{ padding: "1.5rem 0" }}>
               {activeTab === "공간소개" && (
-                <div style={{ whiteSpace: "pre-wrap" }}>{introduction || "소개 정보가 없습니다."}</div>
+                <div style={{ whiteSpace: "pre-wrap" }}>
+                  {introduction || "소개 정보가 없습니다."}
+                </div>
               )}
-
               {activeTab === "시설안내" && (
                 <>
                   {hasCoords ? (
@@ -222,17 +235,13 @@ export default function VenueDetail() {
                   )}
                 </>
               )}
-
               {activeTab === "이용규칙" && (
                 <div style={{ whiteSpace: "pre-wrap" }}>{rules || "이용 규칙 정보가 없습니다."}</div>
               )}
-
               {activeTab === "환불정책" && (
                 <div style={{ whiteSpace: "pre-wrap" }}>{refund || "환불 정책 정보가 없습니다."}</div>
               )}
-
               {activeTab === "Q&A" && <div>Q&A 콘텐츠는 준비 중입니다.</div>}
-
               {activeTab === "후기" && (
                 <div>
                   {rLoading && <div style={{ color: "#666" }}>불러오는 중…</div>}
@@ -357,19 +366,29 @@ export default function VenueDetail() {
                 />
               </label>
 
-              <div style={{ marginTop: 4, color: "#555", fontSize: 14 }}>
-                시간당 금액: {price > 0 ? `₩${price.toLocaleString()}` : "문의"}
-                {timeDiffHours > 0 && price > 0 ? (
-                  <div style={{ marginTop: 4, fontWeight: 600 }}>
-                    예상 결제금액: ₩{estimatedTotal.toLocaleString()}
-                  </div>
-                ) : null}
+              {/* 예상 금액 표시 */}
+              <div
+                style={{
+                  marginTop: 8,
+                  padding: "0.75rem",
+                  background: "#f9fafb",
+                  borderRadius: 8,
+                  color: "#333",
+                }}
+              >
+                💰{" "}
+                <strong>
+                  예상 결제금액:{" "}
+                  {estimatedTotal > 0
+                    ? `₩${estimatedTotal.toLocaleString()}`
+                    : "시간을 선택하세요"}
+                </strong>
               </div>
 
               <button
                 onClick={onClickReserve}
                 style={{
-                  marginTop: 8,
+                  marginTop: 12,
                   padding: "0.75rem 1rem",
                   borderRadius: 8,
                   border: "1px solid #8b5cf6",
@@ -386,8 +405,12 @@ export default function VenueDetail() {
         </div>
       </div>
 
-      {/* 결제 모달 (페이지 위 오버레이) */}
-      <PaymentModal open={payOpen} item={payItem} onClose={() => setPayOpen(false)} />
+      {/* 결제 모달 */}
+      <PaymentModal
+        open={payOpen}
+        item={payItem}
+        onClose={() => setPayOpen(false)}
+      />
 
       <Footer />
     </div>
